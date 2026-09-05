@@ -18,6 +18,7 @@ const renameAction = require('./lib/actions/rename.cjs');
 const authGuard = require('./lib/auth/guard.cjs');
 const authRefresh = require('./lib/auth/refresh.cjs');
 const procSessions = require('./lib/proc/sessions.cjs');
+const procRestart = require('./lib/proc/restart.cjs');
 
 const {
   getDefaultConfigPath,
@@ -93,6 +94,7 @@ function parseArgs(argv) {
     renameIndex: null,
     renameAliasParts: [],
     showUsage: settings.showUsage !== false,
+    restart: false,
     selector: '',
   };
 
@@ -137,6 +139,14 @@ function parseArgs(argv) {
     }
     if (current === '--rename' || current === 'rename') {
       options.renameOnly = true;
+      continue;
+    }
+    if (current === '--restart') {
+      options.restart = true;
+      continue;
+    }
+    if (current === '--no-restart') {
+      options.restart = false;
       continue;
     }
     if (current === '--show-usage') {
@@ -300,7 +310,10 @@ async function main() {
     }
 
     const selected = findSelection(accounts, options.selector);
-    await runSwitchAction({
+    const restartCheck = options.restart
+      ? procRestart.canScheduleRestart()
+      : { available: false, reason: 'auto-restart not requested' };
+    const result = await runSwitchAction({
       selected,
       store,
       config,
@@ -316,13 +329,25 @@ async function main() {
       getDisplayAccounts,
       inferPlanType: inferPlanTypeUi,
       getEntryLabel: getEntryLabelUi,
-      getRestartNotice,
+      getRestartNotice: restartCheck.available ? outputMessages.getAutoRestartNotice : getRestartNotice,
       getStoredAccountsHeading,
       formatAccountSummary: (items) => formatAccountSummaryUi(items, {
         formatRelativeTime: formatRelativeTimeUi,
         getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS),
       }),
     });
+    if (options.restart && result && result.switched) {
+      if (restartCheck.available) {
+        const outcome = procRestart.scheduleClaudeRestart();
+        if (!outcome.scheduled) {
+          console.log('');
+          console.log(outputMessages.getAutoRestartSkipped(outcome.reason));
+        }
+      } else {
+        console.log('');
+        console.log(outputMessages.getAutoRestartSkipped(restartCheck.reason));
+      }
+    }
   } catch (error) {
     console.log(`Switch failed: ${error.message}`);
     process.exitCode = 1;

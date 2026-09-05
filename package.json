@@ -32,6 +32,8 @@
     "lib/auth/guard.cjs",
     "lib/auth/refresh.cjs",
     "lib/proc/sessions.cjs",
+    "lib/proc/restart.cjs",
+    "restart-claude.ps1",
     "README.md",
     "session-start.cjs",
     "statusline.cjs",
