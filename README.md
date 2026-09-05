@@ -1,4 +1,52 @@
-# Claude Code Multi-Account Switcher
+# Claude Code Multi-Account Switcher (modified fork)
+
+> **Attribution.** The original project is [Leuconoe/ClaudeCodeMultiAccounts](https://github.com/Leuconoe/ClaudeCodeMultiAccounts) by **Leuconoe**, released under the MIT License (see [LICENSE](LICENSE)). All credit for the switcher itself goes to the original author.
+>
+> **This fork** is a modified version maintained by [misosan-s](https://github.com/misosan-s). The `patched` branch is upstream **v0.3.10** plus the changes listed below; the `main` branch tracks upstream unchanged. Everything after the "What this fork changes" section is the original README.
+>
+> 원작자 Leuconoe의 MIT 프로젝트를 misosan-s가 변형한 버전입니다. 아래 "What this fork changes" 이후는 원본 README 그대로입니다.
+
+## What this fork changes
+
+1. **Switch by alias or email prefix.** `cc-switch`/`ccs` accepted only a numeric index. Now `ccs work` matches an alias set with `--rename`, and `ccs w` matches the only stored account whose email starts with `w`. An ambiguous prefix lists the candidates instead of guessing.
+2. **`--restart`: switch and relaunch in the same terminal (Windows).** After a successful switch inside a Claude Code session, a detached helper (`restart-claude.ps1`) force-kills that exact session and types `claude -c` into the parent shell, so you land back in the same terminal on the new account. Falls back to a new window; activity is logged to `~/.claude/multi-account-switch/restart.log`. Windows only; other platforms print "Auto-restart skipped".
+3. **Statusline shows the new account right away.** The previous account's cached usage (`cachedUsageUtilization` and statusline sidecar caches) is dropped on switch, so the statusline refetches instead of showing the old account until a manual `/usage`.
+4. **`/ccs` slash command.** Short alias for `/cc-switch` that also passes `--restart`, so `/ccs w` switches and relaunches in one step. On Windows the generated slash commands now match their `allowed-tools` pattern exactly (unquoted forward-slash path, backslash spelling listed too, `//ccs` usage label), which fixes the "Shell command permission check failed" error upstream's `/cc-switch` hits under Git Bash.
+
+### Installing this fork
+
+`npx claude-code-multi-accounts` installs the upstream package, not this fork. Install from source:
+
+```bash
+git clone -b patched https://github.com/misosan-s/ClaudeCodeMultiAccounts.git
+cd ClaudeCodeMultiAccounts
+./install.cmd   # Windows
+./install.sh    # macOS / Linux / WSL
+```
+
+Running it over an existing upstream install is fine: it replaces the files under `~/.claude/multi-account-switch` and rewrites the slash commands. As upstream does, the installer wraps an existing `statusLine.command`; if you want your own statusline back unchanged, restore it from `~/.claude/multi-account-switch/hooks/statusline-target.json`.
+
+### Usage added by this fork
+
+```bash
+ccs              # list accounts (unchanged)
+ccs work         # switch by alias
+ccs w            # switch by unique email prefix
+ccs w --restart  # switch, then relaunch Claude Code in this terminal (Windows)
+```
+
+```text
+/ccs w           # inside Claude Code: switch + auto-restart in one step
+```
+
+Notes:
+- Tested on Windows 11 (PowerShell, Git Bash). The `/ccs` permission fix and auto-restart were validated on Windows only.
+- Windows: the installer writes the `ccs`/`cc-switch` wrappers to `%USERPROFILE%\bin` but does not add that folder to `PATH` (upstream behaviour). Add it yourself if the shell cannot find `ccs`; the `/ccs` slash command works regardless.
+- These changes target upstream v0.3.10. Upstream v0.4.0 later added guards that refuse or stage a switch while a Claude Code session is running; this branch does not include them.
+
+---
+
+# Claude Code Multi-Account Switcher (original README)
 
 [![npm version](https://img.shields.io/npm/v/claude-code-multi-accounts?label=npm)](https://www.npmjs.com/package/claude-code-multi-accounts)
 [![npm downloads](https://img.shields.io/npm/dm/claude-code-multi-accounts)](https://www.npmjs.com/package/claude-code-multi-accounts)
