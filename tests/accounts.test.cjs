@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert');
-const { syncStoreFromLive, getAccountKey } = require('../lib/store/accounts.cjs');
+const { syncStoreFromLive, getAccountKey, findSelection } = require('../lib/store/accounts.cjs');
 const { deepCopy } = require('../lib/store/io.cjs');
 
 const STORE_VERSION = '0.2.9';
@@ -73,4 +73,35 @@ test('getAccountKey: uuid preferred, email fallback', () => {
   assert.strictEqual(getAccountKey({ accountUuid: 'ABC' }), 'uuid:abc');
   assert.strictEqual(getAccountKey({ emailAddress: 'X@Y.com' }), 'email:x@y.com');
   assert.throws(() => getAccountKey({}));
+});
+
+const SELECTION_ACCOUNTS = [
+  { index: 0, alias: 'Work', metadata: { emailAddress: 'alice@example.com' } },
+  { index: 1, metadata: { emailAddress: 'bob@example.com' } },
+  { index: 2, metadata: { emailAddress: 'bonnie@example.com' } },
+];
+
+test('findSelection: numeric index still takes priority', () => {
+  assert.strictEqual(findSelection(SELECTION_ACCOUNTS, '1').index, 1);
+  assert.strictEqual(findSelection(SELECTION_ACCOUNTS, ' 2 ').index, 2);
+});
+
+test('findSelection: alias matches case-insensitively', () => {
+  assert.strictEqual(findSelection(SELECTION_ACCOUNTS, 'work').index, 0);
+  assert.strictEqual(findSelection(SELECTION_ACCOUNTS, 'WORK').index, 0);
+});
+
+test('findSelection: unique email prefix matches', () => {
+  assert.strictEqual(findSelection(SELECTION_ACCOUNTS, 'a').index, 0);
+  assert.strictEqual(findSelection(SELECTION_ACCOUNTS, 'bob').index, 1);
+  assert.strictEqual(findSelection(SELECTION_ACCOUNTS, 'Bon').index, 2);
+});
+
+test('findSelection: ambiguous email prefix throws and names the candidates', () => {
+  assert.throws(() => findSelection(SELECTION_ACCOUNTS, 'b'), /matches multiple accounts \(bob@example.com, bonnie@example.com\)/);
+});
+
+test('findSelection: unknown selector and empty selector throw', () => {
+  assert.throws(() => findSelection(SELECTION_ACCOUNTS, 'zzz'), /No account matched 'zzz'/);
+  assert.throws(() => findSelection(SELECTION_ACCOUNTS, '   '), /Selector cannot be empty/);
 });
