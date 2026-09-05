@@ -84,6 +84,8 @@ function installCommands() {
   const authGuardSource = path.join(repoRoot, 'lib', 'auth', 'guard.cjs');
   const authRefreshSource = path.join(repoRoot, 'lib', 'auth', 'refresh.cjs');
   const procSessionsSource = path.join(repoRoot, 'lib', 'proc', 'sessions.cjs');
+  const procRestartSource = path.join(repoRoot, 'lib', 'proc', 'restart.cjs');
+  const restartHelperSource = path.join(repoRoot, 'restart-claude.ps1');
   const sessionStartSource = path.join(repoRoot, 'session-start.cjs');
   const statuslineSource = path.join(repoRoot, 'statusline.cjs');
   const cliTarget = path.join(binDir, 'cc-switch.cjs');
@@ -132,6 +134,8 @@ function installCommands() {
   fs.copyFileSync(authGuardSource, path.join(binLibAuthDir, 'guard.cjs'));
   fs.copyFileSync(authRefreshSource, path.join(binLibAuthDir, 'refresh.cjs'));
   fs.copyFileSync(procSessionsSource, path.join(binLibProcDir, 'sessions.cjs'));
+  fs.copyFileSync(procRestartSource, path.join(binLibProcDir, 'restart.cjs'));
+  fs.copyFileSync(restartHelperSource, path.join(binDir, 'restart-claude.ps1'));
   fs.copyFileSync(sessionStartSource, sessionStartTarget);
   fs.copyFileSync(statuslineSource, statuslineTarget);
 
@@ -167,19 +171,32 @@ function installCommands() {
 
   const commandShell = process.platform === 'win32' ? 'node' : 'node';
   const switchCommandPathLiteral = process.platform === 'win32' ? cliTarget.replace(/\\/g, '/') : cliTarget;
+  // Windows: the fenced "!" block of a slash command runs under Git Bash with no
+  // approval prompt, so the command must match an allowed-tools prefix character
+  // for character (no quotes around the path when it has no spaces, and the
+  // backslash spelling is listed too). A usage label starting with "/" would be
+  // rewritten by Git Bash's path conversion, hence "//".
+  const winCliLiteral = /\s/.test(cliTarget) ? `"${cliTarget}"` : switchCommandPathLiteral;
   const switchCommandBody = process.platform === 'win32'
-    ? `node "${cliTarget}" --usage-command "/cc-switch" $ARGUMENTS`
+    ? `node ${winCliLiteral} --usage-command "//cc-switch" $ARGUMENTS`
     : `node '${cliTarget}' --usage-command "/cc-switch" $ARGUMENTS`;
+  const ccsCommandBody = process.platform === 'win32'
+    ? `node ${winCliLiteral} --usage-command "//ccs" --restart $ARGUMENTS`
+    : `node '${cliTarget}' --usage-command "/ccs" --restart $ARGUMENTS`;
   const syncCommandBody = process.platform === 'win32'
-    ? `node "${cliTarget}" sync`
+    ? `node ${winCliLiteral} sync`
     : `node '${cliTarget}' sync`;
-  const switchAllowed = `Bash(${commandShell} ${switchCommandPathLiteral}:*)`;
-  const syncAllowed = `Bash(${commandShell} ${switchCommandPathLiteral}:*)`;
+  const allowedPatterns = [`Bash(${commandShell} ${switchCommandPathLiteral}:*)`];
+  if (process.platform === 'win32') {
+    allowedPatterns.push(`Bash(${commandShell} ${cliTarget}:*)`);
+  }
+  const switchAllowed = JSON.stringify(allowedPatterns);
+  const syncAllowed = switchAllowed;
 
   const switchCommandMarkdown = `---
 description: Show saved Claude OAuth accounts and switch \`oauthAccount\` by index, email, or account UUID.
 argument-hint: [index|email|accountUuid]
-allowed-tools: ["${switchAllowed}"]
+allowed-tools: ${switchAllowed}
 disable-model-invocation: true
 ---
 
@@ -192,7 +209,7 @@ ${switchCommandBody}
 
   const syncCommandMarkdown = `---
 description: Sync the current Claude \`oauthAccount\` into \`oauthList\`.
-allowed-tools: ["${syncAllowed}"]
+allowed-tools: ${syncAllowed}
 disable-model-invocation: true
 ---
 
@@ -205,6 +222,23 @@ ${syncCommandBody}
 
   fs.writeFileSync(path.join(commandsDir, 'cc-switch.md'), switchCommandMarkdown, 'utf8');
   fs.writeFileSync(path.join(commandsDir, 'cc-sync-oauth.md'), syncCommandMarkdown, 'utf8');
+
+  const fence = '```';
+  const ccsCommandMarkdown = `---
+description: Short alias for /cc-switch. List stored Claude accounts, or switch by index, alias, or email prefix. A successful switch auto-restarts this Claude Code session in the same terminal (Windows).
+argument-hint: [index|alias|email-prefix]
+allowed-tools: ${switchAllowed}
+disable-model-invocation: true
+---
+
+Run the installed local switch command and use its output as the command result.
+If the output shows a successful switch with the auto-restart notice, this Claude Code session is about to be killed and relaunched automatically. Reply with one short line acknowledging the switch and do not start any other work.
+
+${fence}!
+${ccsCommandBody}
+${fence}
+`;
+  fs.writeFileSync(path.join(commandsDir, 'ccs.md'), ccsCommandMarkdown, 'utf8');
 
   backupFile(settingsPath, backupDir);
   const settings = readJson(settingsPath, {});
@@ -260,7 +294,7 @@ ${syncCommandBody}
   writeJson(settingsPath, settings);
 
   console.log(`Installed multi-account switcher scripts to ${installRoot}`);
-  console.log('Installed commands: cc-switch, cc-sync-oauth, ccs, ccso, /cc-switch, /cc-sync-oauth');
+  console.log('Installed commands: cc-switch, cc-sync-oauth, ccs, ccso, /cc-switch, /cc-sync-oauth, /ccs');
 }
 
 installCommands();

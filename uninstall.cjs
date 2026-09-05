@@ -87,7 +87,7 @@ function uninstallCommands() {
     }
   }
 
-  for (const name of ['cc-switch.md', 'cc-sync-oauth.md']) {
+  for (const name of ['cc-switch.md', 'cc-sync-oauth.md', 'ccs.md']) {
     const target = path.join(commandsDir, name);
     if (fs.existsSync(target)) {
       fs.rmSync(target, { force: true });
