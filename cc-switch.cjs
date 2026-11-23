@@ -19,6 +19,7 @@ const authGuard = require('./lib/auth/guard.cjs');
 const authRefresh = require('./lib/auth/refresh.cjs');
 const procSessions = require('./lib/proc/sessions.cjs');
 const procRestart = require('./lib/proc/restart.cjs');
+const procOrca = require('./lib/proc/orca.cjs');
 
 const {
   getDefaultConfigPath,
@@ -336,6 +337,15 @@ async function main() {
         getUsageColumns: (entry) => getUsageColumnsUi(entry, getRateLimitResetAt, RESET_WINDOW_DAYS),
       }),
     });
+    // Read-only Orca check, before any restart is scheduled so the warning is
+    // printed while this session is still alive.
+    if (result && result.switched) {
+      const orcaLine = outputMessages.getOrcaCheckLine(procOrca.checkOrcaSelection());
+      if (orcaLine) {
+        console.log('');
+        console.log(orcaLine);
+      }
+    }
     if (options.restart && result && result.switched) {
       if (restartCheck.available) {
         const outcome = procRestart.scheduleClaudeRestart();

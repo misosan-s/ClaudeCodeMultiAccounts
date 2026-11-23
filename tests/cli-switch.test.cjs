@@ -62,7 +62,24 @@ function makeFixtures({ storedSlotExpired = false } = {}) {
   return { dir, configPath, credentialsPath, storePath, backupDir };
 }
 
-function runCli(fixtures, args) {
+// The CLI must never reach the real Orca or restart a real session from tests:
+// drop Orca's terminal markers and CLAUDE_PID, and point the Orca CLI at a path
+// that does not exist. `inOrca` adds back only the profile pointer marker.
+function testEnv(fixtures, { inOrca = false } = {}) {
+  const env = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!/^ORCA_/i.test(key) && key.toUpperCase() !== 'CLAUDE_PID') {
+      env[key] = value;
+    }
+  }
+  env.CCS_ORCA_CLI = path.join(fixtures.dir, 'missing-orca.exe');
+  if (inOrca) {
+    env.ORCA_CLAUDE_PROFILE_POINTER = path.join(fixtures.dir, 'selected-host');
+  }
+  return env;
+}
+
+function runCli(fixtures, args, envOptions) {
   return execFileSync(process.execPath, [
     CLI,
     ...args,
@@ -70,7 +87,7 @@ function runCli(fixtures, args) {
     '--credentials', fixtures.credentialsPath,
     '--store', fixtures.storePath,
     '--backup-dir', fixtures.backupDir,
-  ], { encoding: 'utf8' });
+  ], { encoding: 'utf8', env: testEnv(fixtures, envOptions) });
 }
 
 test('switch to valid stored slot: swaps both live files, preserves siblings, no re-login path', () => {
@@ -127,5 +144,61 @@ test('regression: sync captures live account into store', () => {
   const store = JSON.parse(fs.readFileSync(fixtures.storePath, 'utf8'));
   assert.ok(store.accounts.some((e) => e.key === 'uuid:uuid-live-a'));
 
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('switch outside Orca with no Orca CLI: succeeds (exit 0) and says nothing about Orca', () => {
+  const fixtures = makeFixtures();
+  const output = runCli(fixtures, ['0']);
+
+  assert.match(output, /Switched active account to \[0\]/);
+  assert.doesNotMatch(output, /Orca/);
+  const config = JSON.parse(fs.readFileSync(fixtures.configPath, 'utf8'));
+  assert.strictEqual(config.oauthAccount.accountUuid, 'uuid-stored-b');
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('switch inside an Orca terminal whose CLI cannot be found: one warning line, exit 0', () => {
+  const fixtures = makeFixtures();
+  const output = runCli(fixtures, ['0'], { inOrca: true });
+
+  const orcaLines = output.split(/\r?\n/).filter((line) => line.includes('Orca'));
+  assert.strictEqual(orcaLines.length, 1);
+  assert.match(orcaLines[0], /^Warning: could not confirm .*System default \(Orca CLI not found\)/);
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('switch --restart: the Orca check is printed before the restart step', () => {
+  const fixtures = makeFixtures();
+  const output = runCli(fixtures, ['0', '--restart'], { inOrca: true });
+
+  const lines = output.split(/\r?\n/);
+  const orcaAt = lines.findIndex((line) => line.startsWith('Warning: could not confirm'));
+  const restartAt = lines.findIndex((line) => line.startsWith('Auto-restart skipped'));
+  assert.ok(orcaAt >= 0, 'Orca line missing');
+  assert.ok(restartAt >= 0, 'restart line missing');
+  assert.ok(orcaAt < restartAt, 'the Orca check must run before the restart is scheduled');
+
+  fs.rmSync(fixtures.dir, { recursive: true, force: true });
+});
+
+test('failed switch and non-switch commands never touch Orca', () => {
+  const dead = makeFixtures({ storedSlotExpired: true });
+  let failed = null;
+  try {
+    runCli(dead, ['0'], { inOrca: true });
+  } catch (error) {
+    failed = error;
+  }
+  assert.ok(failed, 'CLI must exit non-zero');
+  assert.doesNotMatch(String(failed.stdout), /Orca/);
+  fs.rmSync(dead.dir, { recursive: true, force: true });
+
+  const fixtures = makeFixtures();
+  assert.doesNotMatch(runCli(fixtures, ['sync'], { inOrca: true }), /Orca/);
+  assert.doesNotMatch(runCli(fixtures, ['rename', '0', 'Example'], { inOrca: true }), /Orca/);
+  assert.doesNotMatch(runCli(fixtures, ['remove', '0'], { inOrca: true }), /Orca/);
   fs.rmSync(fixtures.dir, { recursive: true, force: true });
 });

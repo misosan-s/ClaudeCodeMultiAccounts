@@ -85,6 +85,7 @@ function installCommands() {
   const authRefreshSource = path.join(repoRoot, 'lib', 'auth', 'refresh.cjs');
   const procSessionsSource = path.join(repoRoot, 'lib', 'proc', 'sessions.cjs');
   const procRestartSource = path.join(repoRoot, 'lib', 'proc', 'restart.cjs');
+  const procOrcaSource = path.join(repoRoot, 'lib', 'proc', 'orca.cjs');
   const restartHelperSource = path.join(repoRoot, 'restart-claude.ps1');
   const sessionStartSource = path.join(repoRoot, 'session-start.cjs');
   const statuslineSource = path.join(repoRoot, 'statusline.cjs');
@@ -135,6 +136,7 @@ function installCommands() {
   fs.copyFileSync(authRefreshSource, path.join(binLibAuthDir, 'refresh.cjs'));
   fs.copyFileSync(procSessionsSource, path.join(binLibProcDir, 'sessions.cjs'));
   fs.copyFileSync(procRestartSource, path.join(binLibProcDir, 'restart.cjs'));
+  fs.copyFileSync(procOrcaSource, path.join(binLibProcDir, 'orca.cjs'));
   fs.copyFileSync(restartHelperSource, path.join(binDir, 'restart-claude.ps1'));
   fs.copyFileSync(sessionStartSource, sessionStartTarget);
   fs.copyFileSync(statuslineSource, statuslineTarget);
@@ -225,14 +227,14 @@ ${syncCommandBody}
 
   const fence = '```';
   const ccsCommandMarkdown = `---
-description: Short alias for /cc-switch. List stored Claude accounts, or switch by index, alias, or email prefix. A successful switch auto-restarts this Claude Code session in the same terminal (Windows).
+description: Short alias for /cc-switch. List stored Claude accounts, or switch by index, alias, or email prefix. A successful switch restarts this Claude Code session in the same terminal and reopens the same conversation (Windows). It never changes Orca's account selection; it only warns if Orca is not on System default.
 argument-hint: [index|alias|email-prefix]
 allowed-tools: ${switchAllowed}
 disable-model-invocation: true
 ---
 
 Run the installed local switch command and use its output as the command result.
-If the output shows a successful switch with the auto-restart notice, this Claude Code session is about to be killed and relaunched automatically. Reply with one short line acknowledging the switch and do not start any other work.
+If the output shows a successful switch with the auto-restart notice, this Claude Code session is about to be killed and reopened on this same conversation automatically. Reply with one short line acknowledging the switch, repeat any Orca warning from the output, and do not start any other work.
 
 ${fence}!
 ${ccsCommandBody}
